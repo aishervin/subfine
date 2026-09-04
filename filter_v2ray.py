@@ -1,3 +1,4 @@
+import concurrent.futures
 import requests
 import base64
 import json
@@ -9,7 +10,6 @@ def get_v2ray_configs(url):
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
-        # V2Ray subscriptions are often base64 encoded
         decoded_content = base64.b64decode(response.text).decode('utf-8')
         return decoded_content.splitlines()
     except Exception as e:
@@ -17,37 +17,17 @@ def get_v2ray_configs(url):
         return []
 
 
-def is_host_reachable(host, port=443, timeout=5):
-    """
-    Performs a basic TCP reachability check to the specified host and port.
-    This is not an ICMP ping and does not validate V2Ray protocol.
-    It's a heuristic to check if a server is generally responsive on a common port.
-    """
+def is_host_reachable(host, port=443, timeout=3):
     if not host:
         return False
     try:
-        # Attempt to make a simple HTTP/HTTPS connection
-        # This is a common way to check if a server is alive and listening.
-        # For V2Ray, the actual port might differ, but 443 is a good general test.
-        # We use a small timeout to avoid long waits for dead hosts.
         requests.head(f"https://{host}:{port}", timeout=timeout, verify=False)
-        print(f"Host {host}:{port} appears reachable.")
         return True
-    except requests.exceptions.ConnectionError:
-        print(f"Host {host}:{port} connection error (likely unreachable).")
-        return False
-    except requests.exceptions.Timeout:
-        print(f"Host {host}:{port} timed out (likely unreachable).")
-        return False
-    except requests.exceptions.RequestException as e:
-        print(f"Host {host}:{port} encountered an error: {e}")
+    except Exception:
         return False
 
 
 def extract_host_from_v2ray_uri(uri):
-    """
-    Extracts the hostname or IP address from various V2Ray URI formats.
-    """
     try:
         if uri.startswith("vmess://"):
             encoded_config = uri[len("vmess://"):]
@@ -58,7 +38,6 @@ def extract_host_from_v2ray_uri(uri):
             parsed_url = urlparse(uri)
             return parsed_url.hostname
         else:
-            # Fallback for unknown formats, try to find an IP or domain pattern
             match = re.search(r'\b([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\b|\b(?:[a-zA-Z0-9]+\.)+[a-zA-Z]{2,}\b)', uri)
             if match:
                 return match.group(0)
@@ -68,44 +47,58 @@ def extract_host_from_v2ray_uri(uri):
         return None
 
 
+def check_single_config(config_uri):
+    if not config_uri.strip():
+        return None
+    host = extract_host_from_v2ray_uri(config_uri)
+    if host:
+        if is_host_reachable(host, port=443, timeout=3):
+            return config_uri
+    return None
+
+
 def main():
-    subscription_url = "https://subshen.pages.dev"
+    subscription_url = "https://subshen.pages.dev"  # ← آدرس Worker شما
     output_file = "filtered_configs.txt"
 
+    print("📥 دریافت سابسکریپشن از Worker...")
     all_configs = get_v2ray_configs(subscription_url)
     if not all_configs:
-        print("No configurations fetched or decoded. Exiting.")
-        # Create an empty file if no configs are available
+        print("❌ هیچ کانفیگی دریافت نشد.")
         with open(output_file, "w") as f:
             f.write("")
         return
 
+    print(f"✅ تعداد کل کانفیگ‌های دریافت‌شده: {len(all_configs)}")
+
+    # ✅ محدود کردن به ۴۰۰۰ عدد اول (حتی اگر Worker بیشتر بده)
+    if len(all_configs) > 4000:
+        print(f"⚠️ محدود کردن به ۴۰۰۰ کانفیگ اول (از {len(all_configs)} کانفیگ)")
+        all_configs = all_configs[:4000]
+
+    print(f"🚀 شروع پردازش هم‌زمان {len(all_configs)} کانفیگ با ۵۰ ترد...")
+
     filtered_configs = []
-    for config_uri in all_configs:
-        if not config_uri.strip():
-            continue
+    max_workers = 50
 
-        host = extract_host_from_v2ray_uri(config_uri)
-        if host:
-            # Attempt to check reachability on port 443 as a general indicator
-            if is_host_reachable(host, port=443):
-                filtered_configs.append(config_uri)
-            else:
-                print(f"Skipping unreachable config: {config_uri}")
-        else:
-            print(f"Could not extract host from config, skipping: {config_uri}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = executor.map(check_single_config, all_configs)
+        for result in results:
+            if result:
+                filtered_configs.append(result)
 
-    # Join the filtered configs and re-encode them to base64
+    print(f"✅ تعداد کانفیگ‌های معتبر: {len(filtered_configs)}")
+
     if filtered_configs:
         final_output_content = "\n".join(filtered_configs)
         encoded_final_output = base64.b64encode(final_output_content.encode('utf-8')).decode('utf-8')
     else:
-        encoded_final_output = ""  # No configs left
+        encoded_final_output = ""
 
     with open(output_file, "w") as f:
         f.write(encoded_final_output)
 
-    print(f"Filtered configurations saved to {output_file}")
+    print(f"💾 فایل {output_file} ذخیره شد.")
 
 
 if __name__ == "__main__":
