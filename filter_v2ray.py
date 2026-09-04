@@ -58,20 +58,20 @@ def check_single_config(config_uri):
 
 
 def main():
-    subscription_url = "https://subshen.pages.dev"  # ← آدرس Worker شما
-    output_file = "filtered_configs.txt"
+    subscription_url = "https://subshen.pages.dev"  # آدرس Worker شما
+    output_file = "sub.txt"
 
     print("📥 دریافت سابسکریپشن از Worker...")
     all_configs = get_v2ray_configs(subscription_url)
     if not all_configs:
         print("❌ هیچ کانفیگی دریافت نشد.")
         with open(output_file, "w") as f:
-            f.write("")
+            f.write("")  # ← فایل خالی می‌سازد
         return
 
     print(f"✅ تعداد کل کانفیگ‌های دریافت‌شده: {len(all_configs)}")
 
-    # ✅ محدود کردن به ۴۰۰۰ عدد اول (حتی اگر Worker بیشتر بده)
+    # محدود کردن به ۴۰۰۰ عدد اول
     if len(all_configs) > 4000:
         print(f"⚠️ محدود کردن به ۴۰۰۰ کانفیگ اول (از {len(all_configs)} کانفیگ)")
         all_configs = all_configs[:4000]
@@ -98,7 +98,7 @@ def main():
     with open(output_file, "w") as f:
         f.write(encoded_final_output)
 
-    print(f"💾 فایل {output_file} ذخیره شد.")
+    print(f"💾 فایل {output_file} با موفقیت ذخیره شد.")
 
 
 if __name__ == "__main__":
