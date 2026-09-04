@@ -2,7 +2,7 @@ name: Filter V2Ray Configs
 
 on:
   schedule:
-    # هر یک ساعت در دقیقه صفر (UTC)
+    # هر یک ساعت در دقیقه صفر (به وقت UTC)
     - cron: '0 * * * *'
   workflow_dispatch:
     # اجازه اجرای دستی از طریق تب Actions
@@ -26,12 +26,19 @@ jobs:
           pip install requests
 
       - name: Run filter script
-        run: |
-          python filter_v2ray.py
+        run: python filter_v2ray.py
 
-      - name: Upload filtered configs as artifact
+      - name: Upload sub.txt as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: filtered-configs
-          path: filtered_configs.txt
+          name: sub-file
+          path: sub.txt
           retention-days: 7
+
+      - name: Commit sub.txt to repository
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add sub.txt
+          git commit -m "Update sub.txt (filtered configs)" || echo "No changes to commit"
+          git push
